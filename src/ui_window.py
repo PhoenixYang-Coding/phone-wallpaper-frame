@@ -8,12 +8,14 @@ from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QFileDialog, QMessageBox,
     QFrame, QRadioButton, QButtonGroup, QListWidget,
-    QListWidgetItem, QScrollArea, QSpinBox, QStackedWidget
+    QListWidgetItem, QScrollArea, QSpinBox, QStackedWidget,
+    QCheckBox, QComboBox, QSlider, QLineEdit, QGroupBox, QColorDialog
 )
 from PyQt5.QtCore import Qt, QSize, QPoint
-from PyQt5.QtGui import QPixmap, QFont, QDragEnterEvent, QDropEvent, QIcon
+from PyQt5.QtGui import QPixmap, QFont, QDragEnterEvent, QDropEvent, QIcon, QColor
 import os
 from image_processor import ImageProcessor
+from config_manager import ConfigManager
 
 
 class MainWindow(QMainWindow):
@@ -34,13 +36,15 @@ class MainWindow(QMainWindow):
         self.current_layout = (1, 1)
         self.drag_position = QPoint()
         self.is_maximized = False
+        self.config_manager = ConfigManager()
         self.init_ui()
         self.init_processor()
     
     def init_processor(self):
         """初始化图片处理器"""
         try:
-            self.processor = ImageProcessor(self.template_path)
+            background_color = self.config_manager.get("canvas_background_color", "#000000")
+            self.processor = ImageProcessor(self.template_path, background_color)
         except FileNotFoundError as e:
             QMessageBox.critical(self, "错误", f"无法加载模板图片:\n{str(e)}")
     
@@ -480,32 +484,346 @@ class MainWindow(QMainWindow):
         """创建设置页面"""
         page = QWidget()
         
-        layout = QVBoxLayout()
-        layout.setAlignment(Qt.AlignCenter)
-        page.setLayout(layout)
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(40, 20, 40, 20)
+        main_layout.setSpacing(20)
+        page.setLayout(main_layout)
         
-        icon_label = QLabel()
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.dirname(current_dir)
-        settings_icon_path = os.path.join(project_root, "assets", "icons", "settings.png")
-        if os.path.exists(settings_icon_path):
-            pixmap = QPixmap(settings_icon_path)
-            scaled_pixmap = pixmap.scaled(64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            icon_label.setPixmap(scaled_pixmap)
-            icon_label.setAlignment(Qt.AlignCenter)
-            layout.addWidget(icon_label)
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setStyleSheet("""
+            QScrollArea {
+                border: none;
+                background-color: transparent;
+            }
+            QScrollBar:vertical {
+                background-color: transparent;
+                width: 0px;
+                border: none;
+            }
+            QScrollBar:horizontal {
+                background-color: transparent;
+                height: 0px;
+                border: none;
+            }
+        """)
         
-        label = QLabel("设置功能")
-        label.setFont(QFont("Microsoft YaHei", 18))
-        label.setStyleSheet("color: #c3d0cb; margin-top: 20px;")
-        label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(label)
+        scroll_widget = QWidget()
+        scroll_widget.setMaximumWidth(770)
+        scroll_layout = QVBoxLayout()
+        scroll_layout.setSpacing(25)
+        scroll_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_widget.setLayout(scroll_layout)
         
-        desc_label = QLabel("设置功能待开发")
-        desc_label.setFont(QFont("Microsoft YaHei", 12))
-        desc_label.setStyleSheet("color: #888888; margin-top: 20px;")
-        desc_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(desc_label)
+        groupbox_style = """
+            QGroupBox {
+                border: 2px dashed #555555;
+                border-radius: 8px;
+                margin-top: 12px;
+                padding-top: 20px;
+                font-size: 14px;
+                font-weight: bold;
+                color: #00D9FF;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top center;
+                padding: 0 10px;
+                background-color: #1e1f22;
+            }
+        """
+        
+        label_style = "color: #c3d0cb; font-size: 13px;"
+        input_style = """
+            QLineEdit {
+                background-color: #2b2d30;
+                color: #c3d0cb;
+                border: 1px solid #555555;
+                border-radius: 4px;
+                padding: 8px;
+                font-size: 12px;
+            }
+            QLineEdit:focus {
+                border-color: #00D9FF;
+            }
+        """
+        
+        button_style = """
+            QPushButton {
+                background-color: #2b2d30;
+                color: #c3d0cb;
+                border: 1px solid #555555;
+                border-radius: 4px;
+                padding: 8px 15px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #3e4042;
+                border-color: #00D9FF;
+            }
+            QPushButton:pressed {
+                background-color: #1e1f22;
+            }
+        """
+        
+        folder_group = QGroupBox("文件夹路径设置")
+        folder_group.setStyleSheet(groupbox_style)
+        folder_layout = QVBoxLayout()
+        folder_layout.setSpacing(15)
+        
+        source_folder_hlayout = QHBoxLayout()
+        source_folder_label = QLabel("原始图片默认文件夹:")
+        source_folder_label.setStyleSheet(label_style)
+        source_folder_label.setFixedWidth(180)
+        source_folder_hlayout.addWidget(source_folder_label)
+        
+        self.source_folder_input = QLineEdit()
+        self.source_folder_input.setStyleSheet(input_style)
+        self.source_folder_input.setReadOnly(True)
+        self.source_folder_input.setText(self.config_manager.get("source_image_folder", ""))
+        source_folder_hlayout.addWidget(self.source_folder_input)
+        
+        source_browse_btn = QPushButton("浏览")
+        source_browse_btn.setStyleSheet(button_style)
+        source_browse_btn.setFixedWidth(80)
+        source_browse_btn.clicked.connect(self.browse_source_folder)
+        source_folder_hlayout.addWidget(source_browse_btn)
+        folder_layout.addLayout(source_folder_hlayout)
+        
+        output_folder_hlayout = QHBoxLayout()
+        output_folder_label = QLabel("处理后图片默认保存文件夹:")
+        output_folder_label.setStyleSheet(label_style)
+        output_folder_label.setFixedWidth(180)
+        output_folder_hlayout.addWidget(output_folder_label)
+        
+        self.output_folder_input = QLineEdit()
+        self.output_folder_input.setStyleSheet(input_style)
+        self.output_folder_input.setReadOnly(True)
+        self.output_folder_input.setText(self.config_manager.get("output_image_folder", ""))
+        output_folder_hlayout.addWidget(self.output_folder_input)
+        
+        output_browse_btn = QPushButton("浏览")
+        output_browse_btn.setStyleSheet(button_style)
+        output_browse_btn.setFixedWidth(80)
+        output_browse_btn.clicked.connect(self.browse_output_folder)
+        output_folder_hlayout.addWidget(output_browse_btn)
+        folder_layout.addLayout(output_folder_hlayout)
+        
+        folder_group.setLayout(folder_layout)
+        scroll_layout.addWidget(folder_group)
+        
+        save_group = QGroupBox("保存设置")
+        save_group.setStyleSheet(groupbox_style)
+        save_layout = QVBoxLayout()
+        save_layout.setSpacing(15)
+        
+        silent_save_hlayout = QHBoxLayout()
+        silent_save_label = QLabel("是否静默保存:")
+        silent_save_label.setStyleSheet(label_style)
+        silent_save_label.setFixedWidth(180)
+        silent_save_hlayout.addWidget(silent_save_label)
+        
+        self.silent_save_group = QButtonGroup()
+        
+        self.radio_silent_yes = QRadioButton("是（不弹出文件选择框，直接保存到默认文件夹）")
+        self.radio_silent_yes.setStyleSheet("color: #c3d0cb; font-size: 13px;")
+        self.silent_save_group.addButton(self.radio_silent_yes)
+        self.radio_silent_yes.toggled.connect(self.on_silent_save_toggled)
+        self.radio_silent_yes.toggled.connect(self.auto_save_settings)
+        silent_save_hlayout.addWidget(self.radio_silent_yes)
+        
+        self.radio_silent_no = QRadioButton("否")
+        self.radio_silent_no.setStyleSheet("color: #c3d0cb; font-size: 13px;")
+        self.silent_save_group.addButton(self.radio_silent_no)
+        silent_save_hlayout.addWidget(self.radio_silent_no)
+        
+        if self.config_manager.get("silent_save", False):
+            self.radio_silent_yes.setChecked(True)
+        else:
+            self.radio_silent_no.setChecked(True)
+        
+        silent_save_hlayout.addStretch()
+        save_layout.addLayout(silent_save_hlayout)
+        
+        filename_hlayout = QHBoxLayout()
+        filename_label = QLabel("文件命名规则:")
+        filename_label.setStyleSheet(label_style)
+        filename_label.setFixedWidth(180)
+        filename_hlayout.addWidget(filename_label)
+        
+        self.filename_pattern_group = QButtonGroup()
+        
+        self.radio_timestamp = QRadioButton("使用时间戳 (wallpaper_20251106_143025.png)")
+        self.radio_timestamp.setStyleSheet("color: #c3d0cb; font-size: 13px;")
+        self.filename_pattern_group.addButton(self.radio_timestamp)
+        self.radio_timestamp.toggled.connect(self.auto_save_settings)
+        filename_hlayout.addWidget(self.radio_timestamp)
+        
+        self.radio_sequence = QRadioButton("使用递增序号 (wallpaper_001.png)")
+        self.radio_sequence.setStyleSheet("color: #c3d0cb; font-size: 13px;")
+        self.filename_pattern_group.addButton(self.radio_sequence)
+        filename_hlayout.addWidget(self.radio_sequence)
+        
+        current_pattern = self.config_manager.get("filename_pattern", "timestamp")
+        if current_pattern == "timestamp":
+            self.radio_timestamp.setChecked(True)
+        else:
+            self.radio_sequence.setChecked(True)
+        
+        filename_hlayout.addStretch()
+        save_layout.addLayout(filename_hlayout)
+        
+        format_hlayout = QHBoxLayout()
+        format_label = QLabel("保存格式:")
+        format_label.setStyleSheet(label_style)
+        format_label.setFixedWidth(180)
+        format_hlayout.addWidget(format_label)
+        
+        self.format_group = QButtonGroup()
+        
+        self.radio_format_png = QRadioButton("PNG")
+        self.radio_format_png.setStyleSheet("color: #c3d0cb; font-size: 13px;")
+        self.format_group.addButton(self.radio_format_png)
+        self.radio_format_png.toggled.connect(self.auto_save_settings)
+        format_hlayout.addWidget(self.radio_format_png)
+        
+        self.radio_format_jpg = QRadioButton("JPG")
+        self.radio_format_jpg.setStyleSheet("color: #c3d0cb; font-size: 13px;")
+        self.format_group.addButton(self.radio_format_jpg)
+        format_hlayout.addWidget(self.radio_format_jpg)
+        
+        current_format = self.config_manager.get("save_format", "PNG")
+        if current_format == "PNG":
+            self.radio_format_png.setChecked(True)
+        else:
+            self.radio_format_jpg.setChecked(True)
+        
+        format_hlayout.addStretch()
+        save_layout.addLayout(format_hlayout)
+        
+        quality_hlayout = QHBoxLayout()
+        quality_label = QLabel("保存质量: 95")
+        quality_label.setStyleSheet(label_style)
+        quality_label.setFixedWidth(180)
+        quality_hlayout.addWidget(quality_label)
+        self.quality_label = quality_label
+        
+        min_label = QLabel("1")
+        min_label.setStyleSheet("color: #888888; font-size: 12px;")
+        quality_hlayout.addWidget(min_label)
+        
+        self.quality_slider = QSlider(Qt.Horizontal)
+        self.quality_slider.setMinimum(1)
+        self.quality_slider.setMaximum(100)
+        self.quality_slider.setValue(self.config_manager.get("save_quality", 95))
+        self.quality_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                background-color: #2b2d30;
+                height: 6px;
+                border-radius: 3px;
+            }
+            QSlider::handle:horizontal {
+                background-color: #00D9FF;
+                width: 16px;
+                height: 16px;
+                margin: -5px 0;
+                border-radius: 8px;
+            }
+            QSlider::handle:horizontal:hover {
+                background-color: #00FFFF;
+            }
+            QSlider::sub-page:horizontal {
+                background-color: #00D9FF;
+                border-radius: 3px;
+            }
+        """)
+        self.quality_slider.valueChanged.connect(self.on_quality_changed)
+        self.quality_slider.sliderReleased.connect(self.auto_save_settings)
+        quality_hlayout.addWidget(self.quality_slider)
+        
+        max_label = QLabel("100")
+        max_label.setStyleSheet("color: #888888; font-size: 12px;")
+        quality_hlayout.addWidget(max_label)
+        
+        save_layout.addLayout(quality_hlayout)
+        
+        save_group.setLayout(save_layout)
+        scroll_layout.addWidget(save_group)
+        
+        canvas_group = QGroupBox("画布设置")
+        canvas_group.setStyleSheet(groupbox_style)
+        canvas_layout = QVBoxLayout()
+        canvas_layout.setSpacing(15)
+        
+        canvas_bg_hlayout = QHBoxLayout()
+        canvas_bg_label = QLabel("画布背景颜色:")
+        canvas_bg_label.setStyleSheet(label_style)
+        canvas_bg_label.setFixedWidth(180)
+        canvas_bg_hlayout.addWidget(canvas_bg_label)
+        
+        self.canvas_color_input = QLineEdit()
+        self.canvas_color_input.setStyleSheet(input_style)
+        self.canvas_color_input.setReadOnly(True)
+        self.canvas_color_input.setText(self.config_manager.get("canvas_background_color", "#000000"))
+        self.canvas_color_input.setFixedWidth(150)
+        canvas_bg_hlayout.addWidget(self.canvas_color_input)
+        
+        self.canvas_color_btn = QPushButton("选择颜色")
+        self.canvas_color_btn.setStyleSheet(button_style)
+        self.canvas_color_btn.setFixedWidth(100)
+        self.canvas_color_btn.clicked.connect(self.choose_canvas_color)
+        canvas_bg_hlayout.addWidget(self.canvas_color_btn)
+        
+        self.canvas_color_preview = QLabel()
+        self.canvas_color_preview.setFixedSize(40, 30)
+        current_color = self.config_manager.get("canvas_background_color", "#000000")
+        self.canvas_color_preview.setStyleSheet(f"""
+            background-color: {current_color};
+            border: 1px solid #555555;
+            border-radius: 4px;
+        """)
+        canvas_bg_hlayout.addWidget(self.canvas_color_preview)
+        
+        canvas_bg_hlayout.addStretch()
+        canvas_layout.addLayout(canvas_bg_hlayout)
+        
+        canvas_group.setLayout(canvas_layout)
+        scroll_layout.addWidget(canvas_group)
+        
+        scroll_layout.addStretch()
+        
+        scroll_area.setWidget(scroll_widget)
+        main_layout.addWidget(scroll_area)
+        
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        
+        action_button_style = """
+            QPushButton {
+                background-color: #2b2d30;
+                color: #FFA500;
+                border: 1px solid #FFA500;
+                border-radius: 4px;
+                padding: 10px 20px;
+                font-size: 13px;
+                min-width: 100px;
+            }
+            QPushButton:hover {
+                background-color: #3e4042;
+                border-color: #FFB732;
+            }
+            QPushButton:pressed {
+                background-color: #1e1f22;
+            }
+        """
+        
+        reset_btn = QPushButton("恢复默认")
+        reset_btn.setStyleSheet(action_button_style)
+        reset_btn.clicked.connect(self.reset_settings)
+        button_layout.addWidget(reset_btn)
+        
+        button_layout.addStretch()
+        main_layout.addLayout(button_layout)
         
         return page
     
@@ -518,6 +836,7 @@ class MainWindow(QMainWindow):
             QWidget {
                 background-color: #1e1f22;
                 color: #c3d0cb;
+                font-family: "Microsoft YaHei";
             }
             QRadioButton {
                 spacing: 5px;
@@ -635,10 +954,11 @@ class MainWindow(QMainWindow):
     
     def upload_images_batch(self):
         """批量上传图片"""
+        default_folder = self.config_manager.get("source_image_folder", "")
         file_paths, _ = QFileDialog.getOpenFileNames(
             self,
             "批量选择壁纸图片",
-            "",
+            default_folder,
             "图片文件 (*.jpg *.jpeg *.png);;所有文件 (*.*)"
         )
         
@@ -647,10 +967,11 @@ class MainWindow(QMainWindow):
     
     def add_single_image(self):
         """逐个添加图片"""
+        default_folder = self.config_manager.get("source_image_folder", "")
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "选择壁纸图片",
-            "",
+            default_folder,
             "图片文件 (*.jpg *.jpeg *.png);;所有文件 (*.*)"
         )
         
@@ -806,7 +1127,7 @@ class MainWindow(QMainWindow):
                 self.processed_image = self.processor.create_grid_layout(processed_images, rows, cols)
             
             temp_path = "temp_preview.png"
-            self.processor.save_result(self.processed_image, temp_path)
+            self.processor.save_result(self.processed_image, temp_path, "PNG", 95)
             
             pixmap = QPixmap(temp_path)
             if not pixmap.isNull():
@@ -830,24 +1151,182 @@ class MainWindow(QMainWindow):
             self.process_btn.setEnabled(True)
             self.status_label.setText("处理失败")
     
+    def browse_source_folder(self):
+        """浏览选择原始图片文件夹"""
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            "选择原始图片默认文件夹",
+            self.source_folder_input.text()
+        )
+        if folder:
+            self.source_folder_input.setText(folder)
+            self.auto_save_settings()
+    
+    def browse_output_folder(self):
+        """浏览选择输出文件夹"""
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            "选择处理后图片默认保存文件夹",
+            self.output_folder_input.text()
+        )
+        if folder:
+            self.output_folder_input.setText(folder)
+            self.auto_save_settings()
+    
+    def choose_canvas_color(self):
+        """选择画布背景颜色"""
+        current_color = self.config_manager.get("canvas_background_color", "#000000")
+        color = QColorDialog.getColor(QColor(current_color), self, "选择画布背景颜色")
+        
+        if color.isValid():
+            color_hex = color.name()
+            self.canvas_color_input.setText(color_hex)
+            self.canvas_color_preview.setStyleSheet(f"""
+                background-color: {color_hex};
+                border: 1px solid #555555;
+                border-radius: 4px;
+            """)
+            self.config_manager.set("canvas_background_color", color_hex)
+            self.config_manager.save_config()
+            self.init_processor()
+    
+    def auto_save_settings(self):
+        """自动保存设置"""
+        if not hasattr(self, 'radio_format_png') or not hasattr(self, 'quality_slider'):
+            return
+        
+        self.config_manager.set("source_image_folder", self.source_folder_input.text())
+        self.config_manager.set("output_image_folder", self.output_folder_input.text())
+        self.config_manager.set("silent_save", self.radio_silent_yes.isChecked())
+        
+        if self.radio_timestamp.isChecked():
+            self.config_manager.set("filename_pattern", "timestamp")
+        else:
+            self.config_manager.set("filename_pattern", "sequence")
+        
+        if self.radio_format_png.isChecked():
+            self.config_manager.set("save_format", "PNG")
+        else:
+            self.config_manager.set("save_format", "JPG")
+        
+        self.config_manager.set("save_quality", self.quality_slider.value())
+        
+        self.config_manager.save_config()
+    
+    def on_silent_save_toggled(self, checked):
+        """静默保存选项切换"""
+        self.radio_timestamp.setEnabled(checked)
+        self.radio_sequence.setEnabled(checked)
+    
+    def on_quality_changed(self, value):
+        """保存质量滑块值改变"""
+        self.quality_label.setText(f"保存质量: {value}")
+    
+    
+    def reset_settings(self):
+        """恢复默认设置"""
+        reply = QMessageBox.question(
+            self,
+            "确认",
+            "确定要恢复默认设置吗？",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            self.config_manager.reset_to_default()
+            
+            self.source_folder_input.setText(self.config_manager.get("source_image_folder", ""))
+            self.output_folder_input.setText(self.config_manager.get("output_image_folder", ""))
+            
+            if self.config_manager.get("silent_save", False):
+                self.radio_silent_yes.setChecked(True)
+            else:
+                self.radio_silent_no.setChecked(True)
+            
+            current_pattern = self.config_manager.get("filename_pattern", "timestamp")
+            if current_pattern == "timestamp":
+                self.radio_timestamp.setChecked(True)
+            else:
+                self.radio_sequence.setChecked(True)
+            
+            current_format = self.config_manager.get("save_format", "PNG")
+            if current_format == "PNG":
+                self.radio_format_png.setChecked(True)
+            else:
+                self.radio_format_jpg.setChecked(True)
+            
+            self.quality_slider.setValue(self.config_manager.get("save_quality", 95))
+            
+            canvas_color = self.config_manager.get("canvas_background_color", "#000000")
+            self.canvas_color_input.setText(canvas_color)
+            self.canvas_color_preview.setStyleSheet(f"""
+                background-color: {canvas_color};
+                border: 1px solid #555555;
+                border-radius: 4px;
+            """)
+            
+            self.init_processor()
+            
+            QMessageBox.information(self, "成功", "已恢复默认设置")
+    
     def save_image(self):
         """保存图片"""
         if not self.processed_image:
             QMessageBox.warning(self, "警告", "没有可保存的图片")
             return
         
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "保存图片",
-            "",
-            "PNG 图片 (*.png);;JPG 图片 (*.jpg);;所有文件 (*.*)"
-        )
+        silent_save = self.config_manager.get("silent_save", False)
+        output_folder = self.config_manager.get("output_image_folder", "")
+        save_format = self.config_manager.get("save_format", "PNG")
+        save_quality = self.config_manager.get("save_quality", 95)
+        
+        file_path = None
+        
+        if silent_save:
+            if not os.path.exists(output_folder):
+                try:
+                    os.makedirs(output_folder)
+                except Exception as e:
+                    QMessageBox.critical(self, "错误", f"无法创建输出文件夹:\n{str(e)}")
+                    return
+            
+            filename_pattern = self.config_manager.get("filename_pattern", "timestamp")
+            ext = "png" if save_format == "PNG" else "jpg"
+            
+            if filename_pattern == "timestamp":
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"wallpaper_{timestamp}.{ext}"
+            else:
+                existing_files = [f for f in os.listdir(output_folder) if f.startswith("wallpaper_") and f.endswith(f".{ext}")]
+                max_num = 0
+                for f in existing_files:
+                    try:
+                        num_part = f.replace("wallpaper_", "").replace(f".{ext}", "")
+                        if num_part.isdigit():
+                            max_num = max(max_num, int(num_part))
+                    except:
+                        pass
+                filename = f"wallpaper_{str(max_num + 1).zfill(3)}.{ext}"
+            
+            file_path = os.path.join(output_folder, filename)
+        else:
+            default_ext = "png" if save_format == "PNG" else "jpg"
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "保存图片",
+                os.path.join(output_folder, f"wallpaper.{default_ext}"),
+                "PNG 图片 (*.png);;JPG 图片 (*.jpg);;所有文件 (*.*)"
+            )
         
         if file_path:
             try:
-                self.processor.save_result(self.processed_image, file_path)
-                QMessageBox.information(self, "成功", f"图片已保存到:\n{file_path}")
-                self.status_label.setText(f"已保存: {os.path.basename(file_path)}")
+                self.processor.save_result(self.processed_image, file_path, save_format, save_quality)
+                if silent_save:
+                    self.status_label.setText(f"已保存: {os.path.basename(file_path)}")
+                else:
+                    QMessageBox.information(self, "成功", f"图片已保存到:\n{file_path}")
+                    self.status_label.setText(f"已保存: {os.path.basename(file_path)}")
             except Exception as e:
                 QMessageBox.critical(self, "错误", f"保存图片失败:\n{str(e)}")
 

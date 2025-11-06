@@ -16,14 +16,16 @@ class ImageProcessor:
     TARGET_WIDTH = 393
     TARGET_HEIGHT = 852
     
-    def __init__(self, template_path):
+    def __init__(self, template_path, background_color="#000000"):
         """
         初始化图片处理器
         
         @param template_path: 模板图片路径
+        @param background_color: 画布背景颜色（十六进制格式，如 "#000000"）
         """
         self.template_path = template_path
         self.template_image = None
+        self.background_color = background_color
         self.load_template()
     
     def load_template(self):
@@ -124,7 +126,8 @@ class ImageProcessor:
         
         rounded_wallpaper = self.add_rounded_corners(cropped_wallpaper, 22)
         
-        canvas = Image.new("RGBA", (self.TEMPLATE_WIDTH, self.TEMPLATE_HEIGHT), (0, 0, 0, 255))
+        bg_color = self._hex_to_rgb(self.background_color)
+        canvas = Image.new("RGBA", (self.TEMPLATE_WIDTH, self.TEMPLATE_HEIGHT), bg_color + (255,))
         
         x_offset = (self.TEMPLATE_WIDTH - self.TARGET_WIDTH) // 2
         y_offset = (self.TEMPLATE_HEIGHT - self.TARGET_HEIGHT) // 2
@@ -138,6 +141,16 @@ class ImageProcessor:
         
         return result
     
+    def _hex_to_rgb(self, hex_color):
+        """
+        将十六进制颜色转换为 RGB 元组
+        
+        @param hex_color: 十六进制颜色字符串（如 "#000000"）
+        @return: RGB 元组 (r, g, b)
+        """
+        hex_color = hex_color.lstrip('#')
+        return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+    
     def create_grid_layout(self, processed_images, rows, cols):
         """
         创建多图网格拼接
@@ -149,7 +162,8 @@ class ImageProcessor:
         """
         canvas_width = cols * self.TEMPLATE_WIDTH
         canvas_height = rows * self.TEMPLATE_HEIGHT
-        canvas = Image.new('RGB', (canvas_width, canvas_height), (0, 0, 0))
+        bg_color = self._hex_to_rgb(self.background_color)
+        canvas = Image.new('RGB', (canvas_width, canvas_height), bg_color)
         
         for idx, img in enumerate(processed_images):
             row = idx // cols
@@ -162,15 +176,22 @@ class ImageProcessor:
         
         return canvas
     
-    def save_result(self, image, output_path):
+    def save_result(self, image, output_path, save_format="PNG", quality=95):
         """
         保存处理后的图片
         
         @param image: PIL Image 对象
         @param output_path: 输出文件路径
+        @param save_format: 保存格式 (PNG 或 JPG)
+        @param quality: 保存质量 (1-100)
         """
-        if image.mode == "RGBA":
+        if image.mode == "RGBA" and save_format == "JPG":
             image = image.convert("RGB")
         
-        image.save(output_path, quality=95)
+        if save_format == "PNG":
+            image.save(output_path, format="PNG", optimize=True)
+        else:
+            if image.mode == "RGBA":
+                image = image.convert("RGB")
+            image.save(output_path, format="JPEG", quality=quality)
 

@@ -7,6 +7,7 @@
 import sys
 import os
 from PyQt5.QtWidgets import QApplication
+from PyQt5.QtGui import QFont
 from ui_window import MainWindow
 
 
@@ -27,6 +28,8 @@ def get_template_path():
 def main():
     """主函数"""
     app = QApplication(sys.argv)
+    
+    app.setFont(QFont("Microsoft YaHei", 10))
     
     template_path = get_template_path()
     
