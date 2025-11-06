@@ -92,7 +92,9 @@ class MainWindow(QMainWindow):
         title_bar.setLayout(layout)
         
         icon_label = QLabel()
-        icon_path = os.path.join(os.path.dirname(__file__), "icon", "logo.png")
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(current_dir)
+        icon_path = os.path.join(project_root, "assets", "icons", "logo.png")
         if os.path.exists(icon_path):
             pixmap = QPixmap(icon_path)
             scaled_pixmap = pixmap.scaled(24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation)
@@ -208,7 +210,9 @@ class MainWindow(QMainWindow):
         main_btn.setToolTip("生成图片")
         main_btn.setStyleSheet(sidebar_button_active_style)
         main_btn.clicked.connect(self.switch_to_main_page)
-        image_icon_path = os.path.join(os.path.dirname(__file__), "icon", "image.png")
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(current_dir)
+        image_icon_path = os.path.join(project_root, "assets", "icons", "image.png")
         if os.path.exists(image_icon_path):
             main_btn.setIcon(QIcon(image_icon_path))
             main_btn.setIconSize(QSize(32, 32))
@@ -222,7 +226,9 @@ class MainWindow(QMainWindow):
         settings_btn.setToolTip("设置")
         settings_btn.setStyleSheet(sidebar_button_base_style)
         settings_btn.clicked.connect(self.switch_to_settings_page)
-        settings_icon_path = os.path.join(os.path.dirname(__file__), "icon", "settings.png")
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(current_dir)
+        settings_icon_path = os.path.join(project_root, "assets", "icons", "settings.png")
         if os.path.exists(settings_icon_path):
             settings_btn.setIcon(QIcon(settings_icon_path))
             settings_btn.setIconSize(QSize(32, 32))
@@ -479,7 +485,9 @@ class MainWindow(QMainWindow):
         page.setLayout(layout)
         
         icon_label = QLabel()
-        settings_icon_path = os.path.join(os.path.dirname(__file__), "icon", "settings.png")
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(current_dir)
+        settings_icon_path = os.path.join(project_root, "assets", "icons", "settings.png")
         if os.path.exists(settings_icon_path):
             pixmap = QPixmap(settings_icon_path)
             scaled_pixmap = pixmap.scaled(64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation)
