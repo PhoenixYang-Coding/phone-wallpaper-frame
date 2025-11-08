@@ -13,10 +13,27 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, QSize, QPoint, QRect, pyqtSignal
 from PyQt5.QtGui import QPixmap, QFont, QDragEnterEvent, QDropEvent, QIcon, QColor, QPainter, QBrush, QPen
+import sys
 import os
 from PIL import Image
 from image_processor import ImageProcessor
 from config_manager import ConfigManager
+
+
+def resource_path(relative_path):
+    """
+    获取资源文件的绝对路径
+    
+    支持开发环境和打包后的环境
+    
+    @param relative_path: 相对于项目根目录的资源文件路径
+    @return: 资源文件的绝对路径
+    """
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_path, relative_path)
 
 
 class ImageGridPreview(QWidget):
@@ -201,9 +218,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("手机壁纸边框工具")
         self.setGeometry(100, 100, 900, 700)
         
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.dirname(current_dir)
-        icon_path = os.path.join(project_root, "assets", "icons", "logo.png")
+        icon_path = resource_path(os.path.join("assets", "icons", "logo.png"))
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
         
@@ -250,9 +265,7 @@ class MainWindow(QMainWindow):
         title_bar.setLayout(layout)
         
         icon_label = QLabel()
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.dirname(current_dir)
-        icon_path = os.path.join(project_root, "assets", "icons", "logo.png")
+        icon_path = resource_path(os.path.join("assets", "icons", "logo.png"))
         if os.path.exists(icon_path):
             pixmap = QPixmap(icon_path)
             scaled_pixmap = pixmap.scaled(24, 24, Qt.KeepAspectRatio, Qt.SmoothTransformation)
@@ -368,9 +381,7 @@ class MainWindow(QMainWindow):
         main_btn.setToolTip("生成图片")
         main_btn.setStyleSheet(sidebar_button_active_style)
         main_btn.clicked.connect(self.switch_to_main_page)
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.dirname(current_dir)
-        image_icon_path = os.path.join(project_root, "assets", "icons", "image.png")
+        image_icon_path = resource_path(os.path.join("assets", "icons", "image.png"))
         if os.path.exists(image_icon_path):
             main_btn.setIcon(QIcon(image_icon_path))
             main_btn.setIconSize(QSize(32, 32))
@@ -384,9 +395,7 @@ class MainWindow(QMainWindow):
         settings_btn.setToolTip("设置")
         settings_btn.setStyleSheet(sidebar_button_base_style)
         settings_btn.clicked.connect(self.switch_to_settings_page)
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.dirname(current_dir)
-        settings_icon_path = os.path.join(project_root, "assets", "icons", "settings.png")
+        settings_icon_path = resource_path(os.path.join("assets", "icons", "settings.png"))
         if os.path.exists(settings_icon_path):
             settings_btn.setIcon(QIcon(settings_icon_path))
             settings_btn.setIconSize(QSize(32, 32))

@@ -11,17 +11,31 @@ from PyQt5.QtGui import QFont
 from ui_window import MainWindow
 
 
+def resource_path(relative_path):
+    """
+    获取资源文件的绝对路径
+    
+    支持开发环境和打包后的环境
+    
+    @param relative_path: 相对于项目根目录的资源文件路径
+    @return: 资源文件的绝对路径
+    """
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_path, relative_path)
+
+
 def get_template_path():
     """
     获取模板图片路径
     
-    支持跨平台路径处理
+    支持跨平台路径处理和打包后环境
     
     @return: 模板图片的绝对路径
     """
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(current_dir)
-    template_path = os.path.join(project_root, "assets", "templates", "phone-holder.png")
+    template_path = resource_path(os.path.join("assets", "templates", "phone-holder.png"))
     return template_path
 
 
