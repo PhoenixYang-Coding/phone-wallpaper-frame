@@ -11,11 +11,159 @@ from PyQt5.QtWidgets import (
     QListWidgetItem, QScrollArea, QSpinBox, QStackedWidget,
     QCheckBox, QComboBox, QSlider, QLineEdit, QGroupBox, QColorDialog
 )
-from PyQt5.QtCore import Qt, QSize, QPoint
-from PyQt5.QtGui import QPixmap, QFont, QDragEnterEvent, QDropEvent, QIcon, QColor
+from PyQt5.QtCore import Qt, QSize, QPoint, QRect, pyqtSignal
+from PyQt5.QtGui import QPixmap, QFont, QDragEnterEvent, QDropEvent, QIcon, QColor, QPainter, QBrush, QPen
 import os
+from PIL import Image
 from image_processor import ImageProcessor
 from config_manager import ConfigManager
+
+
+class ImageGridPreview(QWidget):
+    """自定义图片网格预览控件，支持悬浮删除"""
+    
+    image_removed = pyqtSignal(int)
+    
+    def __init__(self, parent=None):
+        """初始化图片网格预览控件"""
+        super().__init__(parent)
+        self.images = []
+        self.layout_grid = (1, 1)
+        self.hover_index = -1
+        self.cell_rects = []
+        self.pixmaps = []
+        self.setMouseTracking(True)
+        self.setMinimumSize(350, 300)
+        
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #2b2d30;
+                border: 2px dashed #555555;
+                border-radius: 4px;
+            }
+        """)
+    
+    def set_images(self, image_paths, layout=(1, 1)):
+        """设置图片列表和布局"""
+        self.images = image_paths
+        self.layout_grid = layout
+        self.hover_index = -1
+        self.load_images()
+        self.update()
+    
+    def load_images(self):
+        """加载图片为 QPixmap"""
+        self.pixmaps = []
+        self.cell_rects = []
+        
+        if not self.images:
+            return
+        
+        rows, cols = self.layout_grid
+        widget_width = self.width() - 20
+        widget_height = self.height() - 20
+        
+        cell_width = widget_width // cols
+        cell_height = widget_height // rows
+        
+        for idx, img_path in enumerate(self.images):
+            if idx >= rows * cols:
+                break
+            
+            try:
+                pil_img = Image.open(img_path)
+                pil_img.thumbnail((cell_width - 10, cell_height - 10), Image.Resampling.LANCZOS)
+                
+                temp_path = f"temp_preview_{idx}.png"
+                pil_img.save(temp_path)
+                pixmap = QPixmap(temp_path)
+                
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                
+                self.pixmaps.append(pixmap)
+                
+                row = idx // cols
+                col = idx % cols
+                x = 10 + col * cell_width
+                y = 10 + row * cell_height
+                
+                self.cell_rects.append(QRect(x, y, cell_width, cell_height))
+                
+            except Exception as e:
+                self.pixmaps.append(None)
+                print(f"加载图片失败: {img_path}, 错误: {e}")
+    
+    def paintEvent(self, event):
+        """绘制图片网格"""
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        if not self.images:
+            painter.setPen(QColor("#888888"))
+            painter.setFont(QFont("Microsoft YaHei", 12))
+            painter.drawText(self.rect(), Qt.AlignCenter, "原始图片")
+            return
+        
+        for idx, (pixmap, cell_rect) in enumerate(zip(self.pixmaps, self.cell_rects)):
+            if pixmap and not pixmap.isNull():
+                img_x = cell_rect.x() + (cell_rect.width() - pixmap.width()) // 2
+                img_y = cell_rect.y() + (cell_rect.height() - pixmap.height()) // 2
+                painter.drawPixmap(img_x, img_y, pixmap)
+                
+                if idx == self.hover_index:
+                    painter.setBrush(QBrush(QColor(0, 0, 0, 150)))
+                    painter.setPen(Qt.NoPen)
+                    painter.drawRect(cell_rect)
+                    
+                    delete_btn_size = 40
+                    btn_x = cell_rect.center().x() - delete_btn_size // 2
+                    btn_y = cell_rect.center().y() - delete_btn_size // 2
+                    
+                    painter.setBrush(QBrush(QColor("#e81123")))
+                    painter.setPen(QPen(QColor("#ffffff"), 2))
+                    painter.drawEllipse(btn_x, btn_y, delete_btn_size, delete_btn_size)
+                    
+                    painter.setPen(QPen(QColor("#ffffff"), 3))
+                    cross_margin = 12
+                    painter.drawLine(
+                        btn_x + cross_margin, btn_y + cross_margin,
+                        btn_x + delete_btn_size - cross_margin, btn_y + delete_btn_size - cross_margin
+                    )
+                    painter.drawLine(
+                        btn_x + delete_btn_size - cross_margin, btn_y + cross_margin,
+                        btn_x + cross_margin, btn_y + delete_btn_size - cross_margin
+                    )
+    
+    def mouseMoveEvent(self, event):
+        """鼠标移动事件"""
+        old_hover = self.hover_index
+        self.hover_index = -1
+        
+        for idx, cell_rect in enumerate(self.cell_rects):
+            if cell_rect.contains(event.pos()):
+                self.hover_index = idx
+                break
+        
+        if old_hover != self.hover_index:
+            self.update()
+    
+    def mousePressEvent(self, event):
+        """鼠标点击事件"""
+        if event.button() == Qt.LeftButton and self.hover_index >= 0:
+            self.image_removed.emit(self.hover_index)
+    
+    def leaveEvent(self, event):
+        """鼠标离开事件"""
+        self.hover_index = -1
+        self.update()
+    
+    def resizeEvent(self, event):
+        """窗口大小改变事件"""
+        super().resizeEvent(event)
+        if self.images:
+            self.load_images()
 
 
 class MainWindow(QMainWindow):
@@ -52,6 +200,12 @@ class MainWindow(QMainWindow):
         """初始化用户界面"""
         self.setWindowTitle("手机壁纸边框工具")
         self.setGeometry(100, 100, 900, 700)
+        
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(current_dir)
+        icon_path = os.path.join(project_root, "assets", "icons", "logo.png")
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
         
         self.setWindowFlags(Qt.FramelessWindowHint)
         
@@ -262,96 +416,32 @@ class MainWindow(QMainWindow):
         return stack
     
     def create_main_page(self):
-        """创建生成图片主页面"""
+        """创建生成图片主页面（方案D：分组卡片式布局）"""
         page = QWidget()
         
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(20, 20, 20, 20)
-        main_layout.setSpacing(15)
+        main_layout.setSpacing(20)
         page.setLayout(main_layout)
         
-        title_label = QLabel("手机壁纸边框工具")
-        title_label.setAlignment(Qt.AlignCenter)
-        title_label.setFont(QFont("Microsoft YaHei", 16, QFont.Bold))
-        title_label.setStyleSheet("color: #c3d0cb; padding: 10px;")
-        main_layout.addWidget(title_label)
-        
-        layout_selector_layout = QHBoxLayout()
-        layout_selector_layout.addStretch()
-        
-        layout_label = QLabel("选择布局:")
-        layout_label.setStyleSheet("color: #c3d0cb; font-size: 14px;")
-        layout_selector_layout.addWidget(layout_label)
-        
-        self.layout_button_group = QButtonGroup()
-        
-        radio_style = "color: #00D9FF; font-size: 14px;"
-        
-        self.radio_1x1 = QRadioButton("1x1 (1张)")
-        self.radio_1x1.setStyleSheet(radio_style)
-        self.radio_1x1.setChecked(True)
-        self.radio_1x1.toggled.connect(lambda checked: self.on_preset_layout_changed(1, 1, checked))
-        self.layout_button_group.addButton(self.radio_1x1)
-        layout_selector_layout.addWidget(self.radio_1x1)
-        
-        self.radio_2x3 = QRadioButton("2x3 (6张)")
-        self.radio_2x3.setStyleSheet(radio_style)
-        self.radio_2x3.toggled.connect(lambda checked: self.on_preset_layout_changed(2, 3, checked))
-        self.layout_button_group.addButton(self.radio_2x3)
-        layout_selector_layout.addWidget(self.radio_2x3)
-        
-        self.radio_2x4 = QRadioButton("2x4 (8张)")
-        self.radio_2x4.setStyleSheet(radio_style)
-        self.radio_2x4.toggled.connect(lambda checked: self.on_preset_layout_changed(2, 4, checked))
-        self.layout_button_group.addButton(self.radio_2x4)
-        layout_selector_layout.addWidget(self.radio_2x4)
-        
-        self.radio_custom = QRadioButton("自定义")
-        self.radio_custom.setStyleSheet(radio_style)
-        self.radio_custom.toggled.connect(self.on_custom_layout_toggled)
-        self.layout_button_group.addButton(self.radio_custom)
-        layout_selector_layout.addWidget(self.radio_custom)
-        
-        spinbox_style = """
-            QSpinBox {
-                background-color: #2b2d30;
+        groupbox_style = """
+            QGroupBox {
+                border: 2px dashed #555555;
+                border-radius: 8px;
+                margin-top: 12px;
+                padding-top: 15px;
+                font-size: 14px;
+                font-weight: bold;
                 color: #00D9FF;
-                border: 1px solid #555555;
-                border-radius: 3px;
-                padding: 3px;
-                min-width: 60px;
-            }
-            QSpinBox:disabled {
                 background-color: #1e1f22;
-                color: #666666;
-                border-color: #333333;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0 10px;
+                background-color: #1e1f22;
             }
         """
-        
-        self.row_input = QSpinBox()
-        self.row_input.setMinimum(1)
-        self.row_input.setMaximum(10)
-        self.row_input.setValue(2)
-        self.row_input.setPrefix("行: ")
-        self.row_input.setEnabled(False)
-        self.row_input.setStyleSheet(spinbox_style)
-        self.row_input.valueChanged.connect(self.on_custom_layout_changed)
-        layout_selector_layout.addWidget(self.row_input)
-        
-        self.col_input = QSpinBox()
-        self.col_input.setMinimum(1)
-        self.col_input.setMaximum(10)
-        self.col_input.setValue(2)
-        self.col_input.setPrefix("列: ")
-        self.col_input.setEnabled(False)
-        self.col_input.setStyleSheet(spinbox_style)
-        self.col_input.valueChanged.connect(self.on_custom_layout_changed)
-        layout_selector_layout.addWidget(self.col_input)
-        
-        layout_selector_layout.addStretch()
-        main_layout.addLayout(layout_selector_layout)
-        
-        button_layout = QHBoxLayout()
         
         button_style = """
             QPushButton {
@@ -375,108 +465,182 @@ class MainWindow(QMainWindow):
             }
         """
         
-        self.upload_btn = QPushButton("批量上传")
-        self.upload_btn.setMinimumHeight(45)
+        radio_style = "color: #00D9FF; font-size: 13px;"
+        
+        spinbox_style = """
+            QSpinBox {
+                background-color: #2b2d30;
+                color: #00D9FF;
+                border: 1px solid #555555;
+                border-radius: 3px;
+                padding: 3px;
+                min-width: 60px;
+            }
+            QSpinBox:disabled {
+                background-color: #1e1f22;
+                color: #666666;
+                border-color: #333333;
+            }
+        """
+        
+        image_mgmt_group = QGroupBox("图片管理")
+        image_mgmt_group.setStyleSheet(groupbox_style)
+        image_mgmt_layout = QVBoxLayout()
+        image_mgmt_layout.setSpacing(12)
+        image_mgmt_layout.setContentsMargins(15, 15, 15, 15)
+        
+        layout_selector_layout = QHBoxLayout()
+        layout_selector_layout.setSpacing(10)
+        
+        layout_label = QLabel("布局:")
+        layout_label.setStyleSheet("color: #c3d0cb; font-size: 13px;")
+        layout_selector_layout.addWidget(layout_label)
+        
+        self.layout_button_group = QButtonGroup()
+        
+        self.radio_1x1 = QRadioButton("1x1")
+        self.radio_1x1.setStyleSheet(radio_style)
+        self.radio_1x1.setChecked(True)
+        self.radio_1x1.toggled.connect(lambda checked: self.on_preset_layout_changed(1, 1, checked))
+        self.layout_button_group.addButton(self.radio_1x1)
+        layout_selector_layout.addWidget(self.radio_1x1)
+        
+        self.radio_2x3 = QRadioButton("2x3")
+        self.radio_2x3.setStyleSheet(radio_style)
+        self.radio_2x3.toggled.connect(lambda checked: self.on_preset_layout_changed(2, 3, checked))
+        self.layout_button_group.addButton(self.radio_2x3)
+        layout_selector_layout.addWidget(self.radio_2x3)
+        
+        self.radio_2x4 = QRadioButton("2x4")
+        self.radio_2x4.setStyleSheet(radio_style)
+        self.radio_2x4.toggled.connect(lambda checked: self.on_preset_layout_changed(2, 4, checked))
+        self.layout_button_group.addButton(self.radio_2x4)
+        layout_selector_layout.addWidget(self.radio_2x4)
+        
+        self.radio_custom = QRadioButton("自定义")
+        self.radio_custom.setStyleSheet(radio_style)
+        self.radio_custom.toggled.connect(self.on_custom_layout_toggled)
+        self.layout_button_group.addButton(self.radio_custom)
+        layout_selector_layout.addWidget(self.radio_custom)
+        
+        self.row_input = QSpinBox()
+        self.row_input.setMinimum(1)
+        self.row_input.setMaximum(10)
+        self.row_input.setValue(2)
+        self.row_input.setPrefix("行: ")
+        self.row_input.setEnabled(False)
+        self.row_input.setStyleSheet(spinbox_style)
+        self.row_input.valueChanged.connect(self.on_custom_layout_changed)
+        layout_selector_layout.addWidget(self.row_input)
+        
+        self.col_input = QSpinBox()
+        self.col_input.setMinimum(1)
+        self.col_input.setMaximum(10)
+        self.col_input.setValue(2)
+        self.col_input.setPrefix("列: ")
+        self.col_input.setEnabled(False)
+        self.col_input.setStyleSheet(spinbox_style)
+        self.col_input.valueChanged.connect(self.on_custom_layout_changed)
+        layout_selector_layout.addWidget(self.col_input)
+        
+        layout_selector_layout.addStretch()
+        image_mgmt_layout.addLayout(layout_selector_layout)
+        
+        button_row_layout = QHBoxLayout()
+        button_row_layout.setSpacing(10)
+        
+        self.upload_btn = QPushButton("上传壁纸")
+        self.upload_btn.setMinimumHeight(40)
         self.upload_btn.setFont(QFont("Microsoft YaHei", 10))
         self.upload_btn.setStyleSheet(button_style)
         self.upload_btn.clicked.connect(self.upload_images_batch)
-        button_layout.addWidget(self.upload_btn)
-        
-        self.add_single_btn = QPushButton("逐个添加")
-        self.add_single_btn.setMinimumHeight(45)
-        self.add_single_btn.setFont(QFont("Microsoft YaHei", 10))
-        self.add_single_btn.setStyleSheet(button_style)
-        self.add_single_btn.clicked.connect(self.add_single_image)
-        button_layout.addWidget(self.add_single_btn)
+        button_row_layout.addWidget(self.upload_btn)
         
         self.clear_btn = QPushButton("清空列表")
-        self.clear_btn.setMinimumHeight(45)
+        self.clear_btn.setMinimumHeight(40)
         self.clear_btn.setFont(QFont("Microsoft YaHei", 10))
         self.clear_btn.setStyleSheet(button_style)
         self.clear_btn.clicked.connect(self.clear_images)
-        button_layout.addWidget(self.clear_btn)
+        button_row_layout.addWidget(self.clear_btn)
+        
+        self.image_count_label = QLabel("已上传: 0 张 | 需要: 1 张")
+        self.image_count_label.setStyleSheet("color: #00D9FF; padding: 5px; font-size: 13px;")
+        button_row_layout.addWidget(self.image_count_label)
+        
+        button_row_layout.addStretch()
+        image_mgmt_layout.addLayout(button_row_layout)
+        
+        image_mgmt_group.setLayout(image_mgmt_layout)
+        main_layout.addWidget(image_mgmt_group)
+        
+        preview_row_layout = QHBoxLayout()
+        preview_row_layout.setSpacing(20)
+        
+        original_group = QGroupBox("原始图片")
+        original_group.setStyleSheet(groupbox_style)
+        original_layout = QVBoxLayout()
+        original_layout.setContentsMargins(10, 10, 10, 10)
+        
+        self.original_preview = ImageGridPreview()
+        self.original_preview.setMinimumHeight(350)
+        self.original_preview.image_removed.connect(self.on_image_removed)
+        original_layout.addWidget(self.original_preview)
+        
+        original_group.setLayout(original_layout)
+        preview_row_layout.addWidget(original_group)
+        
+        result_group = QGroupBox("处理结果")
+        result_group.setStyleSheet(groupbox_style)
+        result_layout = QVBoxLayout()
+        result_layout.setContentsMargins(10, 10, 10, 10)
+        
+        self.preview_label = QLabel("处理后预览")
+        self.preview_label.setAlignment(Qt.AlignCenter)
+        self.preview_label.setMinimumSize(350, 350)
+        self.preview_label.setStyleSheet("""
+            QLabel {
+                border-radius: 4px;
+                color: #888888;
+                min-height: 350px;
+            }
+        """)
+        result_layout.addWidget(self.preview_label)
+        
+        result_group.setLayout(result_layout)
+        preview_row_layout.addWidget(result_group)
+        
+        main_layout.addLayout(preview_row_layout)
+        
+        operation_group = QGroupBox("操作")
+        operation_group.setStyleSheet(groupbox_style)
+        operation_layout = QHBoxLayout()
+        operation_layout.setContentsMargins(15, 15, 15, 15)
+        operation_layout.setSpacing(15)
         
         self.process_btn = QPushButton("处理图片")
-        self.process_btn.setMinimumHeight(45)
+        self.process_btn.setMinimumHeight(40)
         self.process_btn.setFont(QFont("Microsoft YaHei", 10))
         self.process_btn.setStyleSheet(button_style)
         self.process_btn.clicked.connect(self.process_images)
         self.process_btn.setEnabled(False)
-        button_layout.addWidget(self.process_btn)
+        operation_layout.addWidget(self.process_btn)
         
         self.save_btn = QPushButton("保存图片")
-        self.save_btn.setMinimumHeight(45)
+        self.save_btn.setMinimumHeight(40)
         self.save_btn.setFont(QFont("Microsoft YaHei", 10))
         self.save_btn.setStyleSheet(button_style)
         self.save_btn.clicked.connect(self.save_image)
         self.save_btn.setEnabled(False)
-        button_layout.addWidget(self.save_btn)
-        
-        main_layout.addLayout(button_layout)
-        
-        self.image_count_label = QLabel("已上传: 0 张 | 需要: 1 张")
-        self.image_count_label.setAlignment(Qt.AlignCenter)
-        self.image_count_label.setStyleSheet("color: #00D9FF; padding: 10px; font-size: 14px;")
-        main_layout.addWidget(self.image_count_label)
-        
-        self.image_list = QListWidget()
-        self.image_list.setStyleSheet("""
-            QListWidget {
-                background-color: #2b2d30;
-                border: 1px solid #555555;
-                border-radius: 4px;
-                color: #c3d0cb;
-                padding: 5px;
-            }
-            QListWidget::item {
-                padding: 5px;
-                border-bottom: 1px solid #3e4042;
-            }
-            QListWidget::item:selected {
-                background-color: #37373d;
-                color: #00D9FF;
-            }
-        """)
-        self.image_list.setMaximumHeight(120)
-        self.image_list.itemDoubleClicked.connect(self.remove_image_from_list)
-        main_layout.addWidget(self.image_list)
-        
-        preview_layout = QHBoxLayout()
-        
-        self.original_label = QLabel("原始图片")
-        self.original_label.setAlignment(Qt.AlignCenter)
-        self.original_label.setStyleSheet("""
-            QLabel {
-                background-color: #2b2d30;
-                border: 2px dashed #555555;
-                border-radius: 4px;
-                color: #888888;
-                min-height: 300px;
-            }
-        """)
-        self.original_label.setMinimumWidth(350)
-        preview_layout.addWidget(self.original_label)
-        
-        self.preview_label = QLabel("处理后预览")
-        self.preview_label.setAlignment(Qt.AlignCenter)
-        self.preview_label.setStyleSheet("""
-            QLabel {
-                background-color: #2b2d30;
-                border: 2px dashed #555555;
-                border-radius: 4px;
-                color: #888888;
-                min-height: 300px;
-            }
-        """)
-        self.preview_label.setMinimumWidth(350)
-        preview_layout.addWidget(self.preview_label)
-        
-        main_layout.addLayout(preview_layout)
+        operation_layout.addWidget(self.save_btn)
         
         self.status_label = QLabel("请上传壁纸图片")
-        self.status_label.setAlignment(Qt.AlignCenter)
-        self.status_label.setStyleSheet("color: #c3d0cb; padding: 10px;")
-        main_layout.addWidget(self.status_label)
+        self.status_label.setStyleSheet("color: #c3d0cb; padding: 5px; font-size: 13px;")
+        operation_layout.addWidget(self.status_label)
+        
+        operation_layout.addStretch()
+        
+        operation_group.setLayout(operation_layout)
+        main_layout.addWidget(operation_group)
         
         return page
     
@@ -628,7 +792,6 @@ class MainWindow(QMainWindow):
         self.radio_silent_yes = QRadioButton("是（不弹出文件选择框，直接保存到默认文件夹）")
         self.radio_silent_yes.setStyleSheet("color: #c3d0cb; font-size: 13px;")
         self.silent_save_group.addButton(self.radio_silent_yes)
-        self.radio_silent_yes.toggled.connect(self.on_silent_save_toggled)
         self.radio_silent_yes.toggled.connect(self.auto_save_settings)
         silent_save_hlayout.addWidget(self.radio_silent_yes)
         
@@ -672,6 +835,11 @@ class MainWindow(QMainWindow):
         
         filename_hlayout.addStretch()
         save_layout.addLayout(filename_hlayout)
+        
+        # 在所有相关控件创建完成后，连接静默保存的信号
+        self.radio_silent_yes.toggled.connect(self.on_silent_save_toggled)
+        # 根据当前静默保存状态，初始化文件命名规则控件的启用状态
+        self.on_silent_save_toggled(self.radio_silent_yes.isChecked())
         
         format_hlayout = QHBoxLayout()
         format_label = QLabel("保存格式:")
@@ -931,6 +1099,7 @@ class MainWindow(QMainWindow):
         self.current_layout = (rows, cols)
         required_count = rows * cols
         self.update_image_count()
+        self.update_preview_grid()
         self.status_label.setText(f"已切换到 {rows}x{cols} 布局，需要 {required_count} 张图片")
     
     def on_preset_layout_changed(self, rows, cols, checked):
@@ -957,7 +1126,7 @@ class MainWindow(QMainWindow):
         default_folder = self.config_manager.get("source_image_folder", "")
         file_paths, _ = QFileDialog.getOpenFileNames(
             self,
-            "批量选择壁纸图片",
+            "选择壁纸图片",
             default_folder,
             "图片文件 (*.jpg *.jpeg *.png);;所有文件 (*.*)"
         )
@@ -965,18 +1134,13 @@ class MainWindow(QMainWindow):
         if file_paths:
             self.add_images_to_list(file_paths)
     
-    def add_single_image(self):
-        """逐个添加图片"""
-        default_folder = self.config_manager.get("source_image_folder", "")
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "选择壁纸图片",
-            default_folder,
-            "图片文件 (*.jpg *.jpeg *.png);;所有文件 (*.*)"
-        )
-        
-        if file_path:
-            self.add_images_to_list([file_path])
+    def on_image_removed(self, index):
+        """处理图片删除事件"""
+        if 0 <= index < len(self.uploaded_images):
+            removed_file = self.uploaded_images.pop(index)
+            self.update_image_count()
+            self.update_preview_grid()
+            self.status_label.setText(f"已删除: {os.path.basename(removed_file)}")
     
     def add_images_to_list(self, file_paths):
         """将图片添加到列表"""
@@ -987,9 +1151,6 @@ class MainWindow(QMainWindow):
                     pixmap = QPixmap(file_path)
                     if not pixmap.isNull():
                         self.uploaded_images.append(file_path)
-                        filename = os.path.basename(file_path)
-                        item_text = f"{len(self.uploaded_images)}. {filename}"
-                        self.image_list.addItem(item_text)
                         added_count += 1
                 except Exception as e:
                     QMessageBox.warning(self, "警告", f"无法加载图片 {file_path}:\n{str(e)}")
@@ -1002,33 +1163,14 @@ class MainWindow(QMainWindow):
     def clear_images(self):
         """清空图片列表"""
         self.uploaded_images.clear()
-        self.image_list.clear()
         self.update_image_count()
-        self.original_label.clear()
-        self.original_label.setText("原始图片")
+        self.original_preview.set_images([], self.current_layout)
         self.preview_label.clear()
         self.preview_label.setText("处理后预览")
         self.processed_image = None
         self.save_btn.setEnabled(False)
         self.process_btn.setEnabled(False)
         self.status_label.setText("已清空图片列表")
-    
-    def remove_image_from_list(self, item):
-        """从列表中删除图片（双击删除）"""
-        row = self.image_list.row(item)
-        if 0 <= row < len(self.uploaded_images):
-            removed_file = self.uploaded_images.pop(row)
-            self.image_list.takeItem(row)
-            
-            for i in range(self.image_list.count()):
-                item = self.image_list.item(i)
-                file_path = self.uploaded_images[i]
-                filename = os.path.basename(file_path)
-                item.setText(f"{i + 1}. {filename}")
-            
-            self.update_image_count()
-            self.update_preview_grid()
-            self.status_label.setText(f"已删除: {os.path.basename(removed_file)}")
     
     def update_image_count(self):
         """更新图片数量显示"""
@@ -1050,52 +1192,7 @@ class MainWindow(QMainWindow):
     
     def update_preview_grid(self):
         """更新原始图片网格预览"""
-        if not self.uploaded_images:
-            self.original_label.clear()
-            self.original_label.setText("原始图片")
-            return
-        
-        rows, cols = self.current_layout
-        cell_width = 150
-        cell_height = 300
-        
-        grid_width = cols * cell_width
-        grid_height = rows * cell_height
-        
-        from PIL import Image
-        grid_image = Image.new('RGB', (grid_width, grid_height), (26, 26, 26))
-        
-        for idx, img_path in enumerate(self.uploaded_images):
-            if idx >= rows * cols:
-                break
-            try:
-                img = Image.open(img_path)
-                img.thumbnail((cell_width - 4, cell_height - 4), Image.Resampling.LANCZOS)
-                
-                row = idx // cols
-                col = idx % cols
-                x = col * cell_width + (cell_width - img.width) // 2
-                y = row * cell_height + (cell_height - img.height) // 2
-                
-                grid_image.paste(img, (x, y))
-            except Exception:
-                pass
-        
-        temp_path = "temp_grid_preview.png"
-        grid_image.save(temp_path)
-        
-        pixmap = QPixmap(temp_path)
-        if not pixmap.isNull():
-            scaled_pixmap = pixmap.scaled(
-                400, 400,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation
-            )
-            self.original_label.setPixmap(scaled_pixmap)
-            self.original_label.setText("")
-        
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+        self.original_preview.set_images(self.uploaded_images, self.current_layout)
     
     def process_images(self):
         """处理多图片"""
@@ -1132,7 +1229,8 @@ class MainWindow(QMainWindow):
             pixmap = QPixmap(temp_path)
             if not pixmap.isNull():
                 scaled_pixmap = pixmap.scaled(
-                    400, 400,
+                    self.preview_label.width(),
+                    self.preview_label.height(),
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation
                 )

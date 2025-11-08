@@ -2,6 +2,11 @@
 
 一个跨平台的桌面应用程序，用于给壁纸图片添加手机边框效果。
 
+## 效果展示
+
+### 最终成品效果
+![最终成品展示](assets/screenshots/final-result.png)
+
 ## 功能特性
 
 - 支持上传 JPG、PNG 格式的壁纸图片
@@ -38,6 +43,14 @@ python src/main.py
 
 4. 预览效果满意后，点击"保存图片"按钮保存结果
 
+### 应用界面截图
+
+#### 壁纸处理页面
+![壁纸处理页面](assets/screenshots/main-page.png)
+
+#### 设置页面
+![设置页面](assets/screenshots/settings-page.png)
+
 ## 项目结构
 
 ```
@@ -45,14 +58,19 @@ phone-wallpaper-frame/
 ├── src/                    # 源代码目录
 │   ├── main.py            # 主程序入口
 │   ├── ui_window.py       # GUI 界面模块
-│   └── image_processor.py # 图片处理核心逻辑
+│   ├── image_processor.py # 图片处理核心逻辑
+│   └── config_manager.py  # 配置管理模块
 ├── assets/                 # 资源文件目录
 │   ├── templates/         # 模板文件
 │   │   └── phone-holder.png
-│   └── icons/             # 图标文件
-│       ├── logo.png
-│       ├── image.png
-│       └── settings.png
+│   ├── icons/             # 图标文件
+│   │   ├── logo.png
+│   │   ├── image.png
+│   │   └── settings.png
+│   └── screenshots/       # 截图文件
+│       ├── final-result.png
+│       ├── main-page.png
+│       └── settings-page.png
 ├── .gitignore             # Git 忽略文件配置
 ├── LICENSE                # MIT 许可证
 ├── README.md              # 项目说明
@@ -69,6 +87,7 @@ phone-wallpaper-frame/
 - 确保 `assets/templates/phone-holder.png` 模板文件存在
 - 建议使用高质量的原图以获得最佳效果
 - 处理后的图片会保存在用户指定的位置
+- 截图文件请放置在 `assets/screenshots/` 目录下
 
 ## 许可证
 
